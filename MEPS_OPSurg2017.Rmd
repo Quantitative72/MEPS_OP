@@ -1,0 +1,105 @@
+---
+title: "OP Surgery Rates by Age and Dr Specialty"
+output: html_notebook
+---
+
+
+```{r}
+install.packages("tidyverse")
+install.packages("dplyr")
+install.packages("tibble")
+install.packages("foreign")  # Only need to run these once
+install.packages("survey")
+install.packages("devtools")
+
+ library(foreign) # Run these every time you re-start R
+ library(survey)
+ library(tibble)
+ library(tidyverse)
+ library (dplyr)
+ 
+ setwd("C:/Users/GrossKennen/OneDrive for Business/MEPS/MEPS_R")
+
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+```{r}
+#Load Popolation and OP datasets
+library(haven)
+OP2017 <- read_sav("C:/Users/GrossKennen/OneDrive for Business/MEPS/2017/MEPS_OP_2017.sav")
+POP2017 <- read_sav ("C:/Users/GrossKennen/OneDrive for Business/MEPS/2017/MEPS_POP_2017.sav")
+```
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+```{r}
+#Select only Surgery records from OP
+OPsurg <- filter(OP2017, SURGPROC==1)
+tail(OPsurg)
+```
+
+
+```{r}
+#One hot encode of Dr Specialty variable
+speccount_df2<- OPsurg %>% 
+        separate_rows(DUPERSID) %>% mutate(count = 1) %>% 
+        spread(DRSPLTY, count, fill = 0, sep = "_")
+```
+
+```{r}
+#Limit the variables to ones needed
+speccount_df2 <- speccount_df2 %>% select(DUPERSID, DRSPLTY_11,DRSPLTY_12, DRSPLTY_13, DRSPLTY_14, DRSPLTY_15,DRSPLTY_16,DRSPLTY_18,DRSPLTY_19,DRSPLTY_2,DRSPLTY_20,
+DRSPLTY_21,DRSPLTY_22,DRSPLTY_23,DRSPLTY_24,DRSPLTY_25,DRSPLTY_26,DRSPLTY_27,DRSPLTY_28,DRSPLTY_29,DRSPLTY_3, DRSPLTY_30,DRSPLTY_32,DRSPLTY_33,DRSPLTY_4,DRSPLTY_5,DRSPLTY_6,DRSPLTY_7,DRSPLTY_8,DRSPLTY_9,DRSPLTY_91)
+
+ls(speccount_df2)
+```
+
+
+```{r}
+#Join OP one-hot encode to Pop dataset based on unique ID
+#Create age categories
+# Select only variables needed
+popsurgcount <- POP2017 %>% left_join (speccount_df2, by ="DUPERSID")
+popsurgcount<- mutate (popsurgcount, agecat4 = ifelse (AGE17X <18, "0-17", ifelse (AGE17X >17 & AGE17X<45, "18_44", ifelse (AGE17X >44 & AGE17X<65, "45-64", "65+"))))
+popsurgcount3 <- popsurgcount %>% select(VARPSU,VARSTR, PERWT17F, agecat4,DRSPLTY_11,DRSPLTY_12, DRSPLTY_13, DRSPLTY_14, DRSPLTY_15,DRSPLTY_16,DRSPLTY_18,DRSPLTY_19,DRSPLTY_2,DRSPLTY_20,
+DRSPLTY_21,DRSPLTY_22,DRSPLTY_23,DRSPLTY_24,DRSPLTY_25,DRSPLTY_26,DRSPLTY_27,DRSPLTY_28,DRSPLTY_29,DRSPLTY_3, DRSPLTY_30,DRSPLTY_32,DRSPLTY_33,DRSPLTY_4,DRSPLTY_5,DRSPLTY_6,DRSPLTY_7,DRSPLTY_8,DRSPLTY_9,DRSPLTY_91)
+
+```
+
+
+
+```{r}
+# after join there are Population records with no surg and appear as NA. Recode NA to 0
+popsurgcount3[is.na(popsurgcount3)] <- 0
+```
+
+
+
+```{r}
+#MEPS survey weighting
+options(survey.lonely.psu='adjust')
+
+mepsdsgn = svydesign(id = ~VARPSU,
+                     strata = ~VARSTR,
+                     weights = ~PERWT17F,
+                     data = popsurgcount3,
+                     nest = TRUE) 
+```
+
+
+```{r}
+#calculate mean and SD for each specialty by age
+means <- svyby(~DRSPLTY_11: DRSPLTY_12 : ~DRSPLTY_13 : ~DRSPLTY_14 : ~DRSPLTY_15 : ~DRSPLTY_16 : ~DRSPLTY_18 : ~DRSPLTY_19 : ~DRSPLTY_2 : ~DRSPLTY_20 : ~DRSPLTY_21 : ~DRSPLTY_22 : ~DRSPLTY_23 : ~DRSPLTY_24 : ~DRSPLTY_25 : ~DRSPLTY_26 : ~DRSPLTY_27 : ~DRSPLTY_28 : ~DRSPLTY_29 : ~DRSPLTY_3 : ~ DRSPLTY_30 : ~DRSPLTY_32 : ~DRSPLTY_33 : ~DRSPLTY_4 : ~DRSPLTY_5 : ~DRSPLTY_6 : ~DRSPLTY_7 : ~DRSPLTY_8 : ~DRSPLTY_9 : ~DRSPLTY_91, by = ~agecat4, FUN=svymean, design = mepsdsgn)
+
+```
+
+```{r}
+#Export means table as excel file
+library("xlsx")
+write.xlsx(means, file = "C:/R/MEPSOPSurg2017Rates.xlsx",
+      sheetName = "OPSurg2017", append = FALSE)
+
+
+```
+
